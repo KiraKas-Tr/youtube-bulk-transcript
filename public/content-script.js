@@ -307,6 +307,77 @@
     }
   }
 
+  function parseTranscriptSegments(data) {
+    const segments = [];
+    walk(data, (node) => {
+      const renderer = node.transcriptSegmentRenderer;
+      if (!renderer?.snippet?.runs || renderer.startMs == null) return;
+      const text = renderer.snippet.runs.map((run) => run.text || '').join('').replace(/\s+/g, ' ').trim();
+      const startMs = Number(renderer.startMs);
+      const endMs = renderer.endMs == null ? undefined : Number(renderer.endMs);
+      if (!text || !Number.isFinite(startMs)) return;
+      segments.push({
+        start: startMs / 1000,
+        ...(endMs != null && Number.isFinite(endMs) && endMs > startMs ? { duration: (endMs - startMs) / 1000 } : {}),
+        text,
+      });
+    });
+    return segments;
+  }
+
+  async function getTranscriptFromCurrentPage(requestedUrl) {
+    const currentUrl = getCurrentVideoUrl();
+    const requestedCanonical = toCanonicalVideoUrl(requestedUrl);
+    if (!currentUrl || !requestedCanonical || currentUrl !== requestedCanonical) return null;
+
+    const html = document.documentElement.outerHTML;
+    const initialData = extractInitialData(html);
+    const config = extractInnertubeConfig(html);
+    if (!initialData || !config) return null;
+
+    const params = [];
+    walk(initialData, (node) => {
+      const param = node.getTranscriptEndpoint?.params;
+      if (typeof param === 'string' && !params.includes(param)) params.push(param);
+    });
+    if (!params.length) return null;
+
+    for (const param of params) {
+      const response = await fetch(`/youtubei/v1/get_transcript?key=${encodeURIComponent(config.apiKey)}&prettyPrint=false`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          'x-youtube-client-name': '1',
+          'x-youtube-client-version': config.context?.client?.clientVersion || '2.20260606.02.00',
+        },
+        body: JSON.stringify({
+          context: config.context,
+          externalVideoId: new URL(currentUrl).searchParams.get('v'),
+          params: param,
+        }),
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const segments = parseTranscriptSegments(data);
+      if (segments.length) {
+        const title = document.querySelector('h1 yt-formatted-string, h1.title')?.textContent?.trim() || `untitled-video-${new URL(currentUrl).searchParams.get('v')}`;
+        const channel = document.querySelector('ytd-video-owner-renderer #channel-name a, ytd-watch-metadata ytd-channel-name a')?.textContent?.trim();
+        return {
+          videoId: new URL(currentUrl).searchParams.get('v'),
+          url: currentUrl,
+          title,
+          channel,
+          language: 'auto',
+          source: 'public_captions',
+          segments,
+        };
+      }
+    }
+
+    return null;
+  }
+
   function createButton() {
     const button = document.createElement('button');
     button.id = BUTTON_ID;
@@ -346,6 +417,15 @@
 
     end.prepend(createButton());
   }
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== 'GET_PAGE_TRANSCRIPT') return;
+
+    getTranscriptFromCurrentPage(message.url)
+      .then((transcript) => sendResponse(transcript ? { ok: true, transcript } : { ok: false, error: 'No transcript on current page.' }))
+      .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    return true;
+  });
 
   ensureButton();
   window.setInterval(ensureButton, 1000);

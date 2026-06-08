@@ -210,6 +210,63 @@ function hasCaptionTracks(player: PlayerResponse | null): boolean {
   return Boolean(player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length);
 }
 
+function extractInitialData(html: string): unknown | null {
+  return extractJsonObject(html, 'ytInitialData')
+    ?? extractJsonObject(html, 'var ytInitialData =')
+    ?? extractJsonObject(html, 'window["ytInitialData"] =');
+}
+
+function walk(value: unknown, visitor: (node: Record<string, unknown>) => void): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach((item) => walk(item, visitor));
+    return;
+  }
+  const node = value as Record<string, unknown>;
+  visitor(node);
+  Object.values(node).forEach((item) => walk(item, visitor));
+}
+
+function extractTranscriptParams(initialData: unknown): string[] {
+  const params = new Set<string>();
+  walk(initialData, (node) => {
+    const endpoint = node.getTranscriptEndpoint as { params?: unknown } | undefined;
+    if (typeof endpoint?.params === 'string') params.add(endpoint.params);
+  });
+  return [...params];
+}
+
+function textFromRuns(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const runs = (value as { runs?: Array<{ text?: string }> }).runs;
+  if (!Array.isArray(runs)) return '';
+  return normalizeWhitespace(runs.map((run) => run.text ?? '').join(''));
+}
+
+function parseTranscriptPanelResponse(data: unknown): TranscriptSegment[] {
+  const segments: TranscriptSegment[] = [];
+  walk(data, (node) => {
+    const renderer = node.transcriptSegmentRenderer as {
+      startMs?: string;
+      endMs?: string;
+      snippet?: unknown;
+    } | undefined;
+    if (!renderer?.snippet || renderer.startMs == null) return;
+
+    const startMs = Number(renderer.startMs);
+    const endMs = renderer.endMs == null ? undefined : Number(renderer.endMs);
+    const text = textFromRuns(renderer.snippet);
+    if (!Number.isFinite(startMs) || !text) return;
+
+    segments.push({
+      start: startMs / 1000,
+      ...(endMs != null && Number.isFinite(endMs) && endMs > startMs ? { duration: (endMs - startMs) / 1000 } : {}),
+      text,
+    });
+  });
+  return segments;
+}
+
 async function fetchInnertubePlayer(videoId: string, config: InnertubeConfig, signal: AbortSignal): Promise<PlayerResponse | null> {
   const contexts: Array<Record<string, unknown>> = [
     config.context,
@@ -289,6 +346,44 @@ async function fetchCaptionSegments(track: CaptionTrack, signal: AbortSignal): P
   return [];
 }
 
+async function fetchTranscriptPanelSegments(videoId: string, url: string, signal: AbortSignal): Promise<TranscriptSegment[]> {
+  const html = await fetchText(`${url}&hl=en&persist_hl=1`, signal);
+  const config = extractInnertubeConfig(html);
+  const initialData = extractInitialData(html);
+  const params = extractTranscriptParams(initialData);
+  if (!config || !params.length) return [];
+
+  const headers = {
+    'content-type': 'application/json',
+    'x-youtube-client-name': '1',
+    'x-youtube-client-version': config.clientVersion,
+  };
+
+  for (const param of params) {
+    try {
+      const response = await fetch(`https://www.youtube.com/youtubei/v1/get_transcript?key=${encodeURIComponent(config.apiKey)}&prettyPrint=false`, {
+        method: 'POST',
+        signal,
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          context: config.context,
+          externalVideoId: videoId,
+          params: param,
+        }),
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const segments = parseTranscriptPanelResponse(data);
+      if (segments.length) return segments;
+    } catch {
+      // Try the next transcript endpoint params value.
+    }
+  }
+
+  return [];
+}
+
 export type GetTranscriptOptions = {
   language?: string;
   signal?: AbortSignal;
@@ -310,7 +405,10 @@ export async function resolveTranscript(item: JobItem, language: string, signal:
     if (!tracks.length) throw new TranscriptError('NO_TRANSCRIPT');
 
     const selectedTrack = selectCaptionTrack(tracks, language);
-    const segments = await fetchCaptionSegments(selectedTrack, signal);
+    let segments = await fetchCaptionSegments(selectedTrack, signal);
+    if (!segments.length) {
+      segments = await fetchTranscriptPanelSegments(item.videoId, url, signal);
+    }
     if (!segments.length) throw new TranscriptError('NO_TRANSCRIPT');
 
     const title = player.videoDetails?.title?.trim() || item.title || `untitled-video-${item.videoId}`;

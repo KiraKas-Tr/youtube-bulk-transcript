@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BulkJob, Counts } from './types';
+import type { BulkJob, Counts, JobItem, Transcript } from './types';
 import { getCounts } from './utils/format';
 import { planJob } from './job/planner';
 import { runJobInFolder } from './job/queue';
 import { browserJobWriter } from './output/writer';
 import { loadSettings, saveSettings } from './storage/settings';
+import { resolveTranscript } from './youtube/adapter';
 import './style.css';
 
 const SAMPLE_INPUT = '';
@@ -37,6 +38,27 @@ function mergeCapturedUrls(existingText: string, capturedUrls: string[]): string
   }
 
   return merged.join('\n');
+}
+
+async function getTranscriptFromActiveYoutubeTab(item: JobItem, language: string): Promise<Transcript | null> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'GET_ACTIVE_TAB_TRANSCRIPT',
+      url: item.canonicalUrl ?? item.inputUrl,
+      language,
+    });
+    return response?.ok ? response.transcript as Transcript : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTranscriptWithPageFallback(item: JobItem, language: string, signal: AbortSignal): Promise<Transcript> {
+  const pageTranscript = await getTranscriptFromActiveYoutubeTab(item, language);
+  if (pageTranscript) return pageTranscript;
+  return resolveTranscript(item, language, signal);
 }
 
 export function App() {
@@ -147,7 +169,7 @@ export function App() {
         {
           onUpdate: (updatedJob) => setJob(updatedJob),
         },
-        { signal: controller.signal },
+        { signal: controller.signal, resolver: resolveTranscriptWithPageFallback },
       );
       setJob(finalJob);
       setMessage(controller.signal.aborted ? 'Job stopped. Completed transcripts were written.' : 'Job completed. TXT transcripts written.');
