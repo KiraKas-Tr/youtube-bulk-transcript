@@ -19,6 +19,12 @@ type PlayerResponse = {
   };
 };
 
+type InnertubeConfig = {
+  apiKey: string;
+  context: Record<string, unknown>;
+  clientVersion: string;
+};
+
 export class TranscriptError extends Error {
   constructor(public code: keyof typeof USER_ERRORS) {
     super(USER_ERRORS[code]);
@@ -148,9 +154,78 @@ function parseCaptionXml(text: string): TranscriptSegment[] {
 }
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
-  const response = await fetch(url, { signal, credentials: 'omit' });
+  const response = await fetch(url, {
+    signal,
+    credentials: 'include',
+    headers: {
+      'accept-language': 'en-US,en;q=0.9',
+    },
+  });
   if (!response.ok) throw new TranscriptError('FETCH_FAILED');
   return response.text();
+}
+
+function extractInnertubeConfig(html: string): InnertubeConfig | null {
+  const apiKey = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)?.[1];
+  const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/)?.[1] ?? '2.20240601.00.00';
+  const context = extractJsonObject(html, '"INNERTUBE_CONTEXT"') as Record<string, unknown> | null;
+
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    clientVersion,
+    context: context ?? { client: { clientName: 'WEB', clientVersion } },
+  };
+}
+
+function hasCaptionTracks(player: PlayerResponse | null): boolean {
+  return Boolean(player?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length);
+}
+
+async function fetchInnertubePlayer(videoId: string, config: InnertubeConfig, signal: AbortSignal): Promise<PlayerResponse | null> {
+  const contexts: Array<Record<string, unknown>> = [
+    config.context,
+    { client: { clientName: 'WEB', clientVersion: config.clientVersion, hl: 'en', gl: 'US' } },
+    { client: { clientName: 'WEB_EMBEDDED_PLAYER', clientVersion: config.clientVersion, hl: 'en', gl: 'US' } },
+    { client: { clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER', clientVersion: '2.0', hl: 'en', gl: 'US' } },
+  ];
+
+  for (const context of contexts) {
+    const response = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(config.apiKey)}`, {
+      method: 'POST',
+      signal,
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        context,
+        videoId,
+        contentCheckOk: true,
+        racyCheckOk: true,
+      }),
+    });
+
+    if (!response.ok) continue;
+    const player = (await response.json()) as PlayerResponse;
+    if (hasCaptionTracks(player)) return player;
+  }
+
+  return null;
+}
+
+async function resolvePlayer(videoId: string, url: string, signal: AbortSignal): Promise<PlayerResponse> {
+  const watchHtml = await fetchText(`${url}&hl=en&persist_hl=1&bpctr=9999999999&has_verified=1`, signal);
+  const htmlPlayer = extractJsonObject(watchHtml, 'ytInitialPlayerResponse') as PlayerResponse | null;
+  if (hasCaptionTracks(htmlPlayer)) return htmlPlayer!;
+
+  const config = extractInnertubeConfig(watchHtml);
+  if (config) {
+    const apiPlayer = await fetchInnertubePlayer(videoId, config, signal);
+    if (hasCaptionTracks(apiPlayer)) return apiPlayer!;
+    if (htmlPlayer) return htmlPlayer;
+  }
+
+  if (htmlPlayer) return htmlPlayer;
+  throw new TranscriptError('UNAVAILABLE');
 }
 
 export type GetTranscriptOptions = {
@@ -163,9 +238,7 @@ export async function resolveTranscript(item: JobItem, language: string, signal:
 
   try {
     const url = item.canonicalUrl ?? `https://www.youtube.com/watch?v=${item.videoId}`;
-    const watchHtml = await fetchText(`${url}&hl=en`, signal);
-    const player = extractJsonObject(watchHtml, 'ytInitialPlayerResponse') as PlayerResponse | null;
-    if (!player) throw new TranscriptError('UNAVAILABLE');
+    const player = await resolvePlayer(item.videoId, url, signal);
 
     const status = player.playabilityStatus?.status;
     if (status && status !== 'OK') throw new TranscriptError('UNAVAILABLE');

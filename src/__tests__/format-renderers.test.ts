@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { BulkJob, Transcript } from '../types';
+import type { Transcript } from '../types';
 import { csvEscape } from '../utils/csv';
 import { formatJobTimestamp, formatTranscriptTimestamp, sanitizeFilenamePart } from '../utils/format';
-import { renderFailedCsv, renderIndexCsv, renderMetadataJson, renderTxt } from '../output/renderers';
+import { renderTxt } from '../output/renderers';
 
 const transcript: Transcript = {
   videoId: 'dQw4w9WgXcQ',
@@ -17,23 +17,7 @@ const transcript: Transcript = {
   ],
 };
 
-const job: BulkJob = {
-  id: 'job-1',
-  type: 'mixed',
-  selectedLanguage: 'auto',
-  formats: ['txt'],
-  createdAt: '2026-06-08T15:30:00.000Z',
-  completedAt: '2026-06-08T15:31:00.000Z',
-  folderName: 'bulk-transcripts-2026-06-08-1530',
-  settings: { maxVideos: 50, concurrency: 2, retryCount: 1, timeoutMs: 25000 },
-  items: [
-    { order: 1, inputUrl: transcript.url, videoId: transcript.videoId, canonicalUrl: transcript.url, title: transcript.title, channel: 'Channel', language: 'en', status: 'success', files: { txt: 'txt/001.txt' } },
-    { order: 2, inputUrl: 'bad', status: 'skipped', error: 'URL không hợp lệ.' },
-    { order: 3, inputUrl: 'https://youtu.be/oHg5SJYRHA0', videoId: 'oHg5SJYRHA0', canonicalUrl: 'https://www.youtube.com/watch?v=oHg5SJYRHA0', status: 'failed', error: 'Video không có transcript public.' },
-  ],
-};
-
-describe('format utilities and renderers', () => {
+describe('format utilities and TXT renderer', () => {
   it('formats timestamps and sanitizes filenames', () => {
     expect(formatJobTimestamp(new Date('2026-06-08T15:30:00'))).toBe('2026-06-08-1530');
     expect(formatTranscriptTimestamp(65)).toBe('01:05');
@@ -47,15 +31,5 @@ describe('format utilities and renderers', () => {
 
   it('renders transcript-only TXT files', () => {
     expect(renderTxt(transcript)).toBe('[00:00] Intro text\n[01:05] More text\n');
-  });
-
-  it('renders reports with all index rows, failed-only failed.csv, and metadata counts', () => {
-    const index = renderIndexCsv(job);
-    const failed = renderFailedCsv(job);
-    const metadata = JSON.parse(renderMetadataJson(job));
-    expect(index.split('\n').filter(Boolean)).toHaveLength(4);
-    expect(failed).toContain('oHg5SJYRHA0');
-    expect(failed).not.toContain('URL không hợp lệ.');
-    expect(metadata.counts).toMatchObject({ total: 3, success: 1, skipped: 1, failed: 1 });
   });
 });

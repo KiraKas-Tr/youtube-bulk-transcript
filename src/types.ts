@@ -69,5 +69,4 @@ export type JobWriter = {
   chooseParentFolder(): Promise<FileSystemDirectoryHandle>;
   createJobFolder(parent: FileSystemDirectoryHandle, job: BulkJob): Promise<FileSystemDirectoryHandle>;
   writeTranscriptFiles(jobFolder: FileSystemDirectoryHandle, item: JobItem, transcript: Transcript, job: BulkJob): Promise<JobItem>;
-  writeReports(jobFolder: FileSystemDirectoryHandle, job: BulkJob): Promise<void>;
 };

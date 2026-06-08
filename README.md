@@ -1,6 +1,6 @@
 # Bulk YouTube Transcript Saver
 
-Local-first Chrome MV3 extension for saving public YouTube captions from YouTube video URLs or channels as transcript-only `.txt` files plus `index.csv`, `failed.csv`, and `metadata.json` reports.
+Local-first Chrome MV3 extension for saving public YouTube captions from YouTube video URLs or channels as transcript-only `.txt` files.
 
 ## Install / load locally
 

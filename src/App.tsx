@@ -150,7 +150,7 @@ export function App() {
         { signal: controller.signal },
       );
       setJob(finalJob);
-      setMessage(controller.signal.aborted ? 'Job stopped. Reports were written with final statuses.' : 'Job completed. Reports written.');
+      setMessage(controller.signal.aborted ? 'Job stopped. Completed transcripts were written.' : 'Job completed. TXT transcripts written.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Job failed.');
     } finally {
@@ -184,7 +184,7 @@ export function App() {
         <div>
           <p className="eyebrow">Chrome MV3 · local-first</p>
           <h1>Bulk YouTube Transcript Saver</h1>
-          <p>Paste YouTube video URLs or collect a channel, fetch public captions, and save transcript-only TXT files plus reports to a local folder.</p>
+          <p>Paste YouTube video URLs or collect a channel, fetch public captions, and save transcript-only TXT files to a local folder.</p>
         </div>
       </header>
 
@@ -220,7 +220,6 @@ export function App() {
           <div className="outputs" aria-label="Output formats">
             <span>Output</span>
             <label><input type="checkbox" checked disabled /> TXT transcripts only</label>
-            <label><input type="checkbox" checked disabled /> CSV/metadata reports</label>
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 import type { BulkJob, JobItem, JobWriter, Transcript } from '../types';
 import { USER_ERRORS } from '../types';
 import { getJobFolderName, makeBaseFileName } from '../utils/format';
-import { renderFailedCsv, renderIndexCsv, renderMetadataJson, renderTxt } from './renderers';
+import { renderTxt } from './renderers';
 
 async function writeTextFile(dir: FileSystemDirectoryHandle, name: string, contents: string): Promise<void> {
   const file = await dir.getFileHandle(name, { create: true });
@@ -96,16 +96,6 @@ export const browserJobWriter: JobWriter = {
         language: transcript.language,
         files,
       };
-    } catch (error) {
-      throw mapWriteError(error);
-    }
-  },
-
-  async writeReports(jobFolder, job) {
-    try {
-      await writeTextFile(jobFolder, 'index.csv', renderIndexCsv(job));
-      await writeTextFile(jobFolder, 'failed.csv', renderFailedCsv(job));
-      await writeTextFile(jobFolder, 'metadata.json', renderMetadataJson(job));
     } catch (error) {
       throw mapWriteError(error);
     }

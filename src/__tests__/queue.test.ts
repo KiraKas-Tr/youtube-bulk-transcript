@@ -30,14 +30,13 @@ function makeJob(): BulkJob {
 }
 
 describe('runJobInFolder', () => {
-  it('retries once, continues after failure, writes reports, and updates statuses', async () => {
+  it('retries once, continues after failure, writes successful TXT files, and updates statuses', async () => {
     const job = makeJob();
     const attempts = new Map<string, number>();
     const writer: JobWriter = {
       chooseParentFolder: vi.fn(),
       createJobFolder: vi.fn(),
       writeTranscriptFiles: vi.fn(async (_folder, item, transcript) => ({ ...item, title: transcript.title, language: transcript.language, files: { txt: 't' } })),
-      writeReports: vi.fn(),
     };
 
     const finalJob = await runJobInFolder(job, {} as FileSystemDirectoryHandle, writer, {}, {
@@ -53,7 +52,6 @@ describe('runJobInFolder', () => {
     expect(attempts.get('aaaaaa11111')).toBe(2);
     expect(finalJob.items.map((item) => item.status)).toEqual(['success', 'failed']);
     expect(writer.writeTranscriptFiles).toHaveBeenCalledTimes(1);
-    expect(writer.writeReports).toHaveBeenCalledTimes(1);
     expect(finalJob.completedAt).toBeTruthy();
   });
 });

@@ -124,8 +124,6 @@ async function runJobInternal(
 
   job.completedAt = new Date().toISOString();
   notify(job, undefined, callbacks);
-  await writer.writeReports(jobFolder, job);
-  notify(job, undefined, callbacks);
   return cloneJob(job);
 }
 
