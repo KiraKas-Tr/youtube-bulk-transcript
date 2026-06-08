@@ -48,6 +48,7 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<string>('');
   const controllerRef = useRef<AbortController | null>(null);
+  const capturedStorageReadyRef = useRef(false);
 
   useEffect(() => {
     loadSettings().then((settings) => {
@@ -60,13 +61,19 @@ export function App() {
         const captured = Array.isArray(rawValue) ? rawValue.filter((url): url is string => typeof url === 'string') : [];
         if (!captured.length) return;
 
-        setUrls((current) => mergeCapturedUrls(current, captured));
-        setJob(null);
-        setMessage(`Added ${captured.length} captured YouTube URL${captured.length === 1 ? '' : 's'} to the list.`);
+        setUrls((current) => {
+          const next = mergeCapturedUrls(current, captured);
+          if (next !== current) {
+            setJob(null);
+            setMessage(`Added ${normalizeUrlLines(next).length} captured YouTube URL${normalizeUrlLines(next).length === 1 ? '' : 's'} to the list.`);
+          }
+          return next;
+        });
       };
 
       chrome.storage.local.get({ [CAPTURED_URLS_KEY]: [] }).then((values) => {
         applyCapturedUrls(values[CAPTURED_URLS_KEY]);
+        capturedStorageReadyRef.current = true;
       });
 
       const onStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
@@ -83,6 +90,11 @@ export function App() {
   useEffect(() => {
     void saveSettings({ selectedLanguage, customLanguage });
   }, [selectedLanguage, customLanguage]);
+
+  useEffect(() => {
+    if (!capturedStorageReadyRef.current || typeof chrome === 'undefined' || !chrome.storage?.local) return;
+    void chrome.storage.local.set({ [CAPTURED_URLS_KEY]: normalizeUrlLines(urls) });
+  }, [urls]);
 
   const previewJob = useMemo(() => {
     const inputs = urls.split(/\r?\n/);

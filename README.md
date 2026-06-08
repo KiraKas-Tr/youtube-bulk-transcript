@@ -26,6 +26,8 @@ Then load the generated `dist/` folder in `chrome://extensions`.
 
 When loaded, the extension injects an **Add to saver** button into the YouTube top-right navbar on watch and Shorts pages. Clicking it stores the current video URL and opens the saver in Chrome's side panel with the captured URL prefilled.
 
+On channel pages, the same navbar area shows **Collect channel**. It opens the channel's Videos tab when needed, scrolls to collect video URLs, and adds them to the side panel up to the MVP job cap of 50 videos.
+
 ## Development
 
 ```bash
