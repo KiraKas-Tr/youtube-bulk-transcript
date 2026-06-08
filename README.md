@@ -28,6 +28,19 @@ When loaded, the extension injects an **Add to saver** button into the YouTube t
 
 On channel pages, the same navbar area shows **Collect channel**. It collects channel video URLs without scrolling by using YouTube's internal continuation responses, then adds them to the side panel. This no-key method is unofficial and may break if YouTube changes its page data.
 
+## Reusable transcript functions
+
+The code exposes transcript helpers in `src/youtube/adapter.ts`:
+
+```ts
+import { getTranscript, getTranscriptText } from './src/youtube/adapter';
+
+const transcript = await getTranscript('https://www.youtube.com/watch?v=VIDEO_ID', { language: 'auto' });
+const txtOnly = await getTranscriptText('https://www.youtube.com/watch?v=VIDEO_ID');
+```
+
+`getTranscriptText()` returns only timestamped transcript lines, matching the `.txt` export format.
+
 ## Development
 
 ```bash

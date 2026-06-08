@@ -1,5 +1,6 @@
 import type { JobItem, Transcript, TranscriptSegment } from '../types';
 import { USER_ERRORS } from '../types';
+import { parseYouTubeUrl } from '../utils/url';
 
 type CaptionTrack = {
   baseUrl: string;
@@ -152,6 +153,11 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   return response.text();
 }
 
+export type GetTranscriptOptions = {
+  language?: string;
+  signal?: AbortSignal;
+};
+
 export async function resolveTranscript(item: JobItem, language: string, signal: AbortSignal): Promise<Transcript> {
   if (!item.videoId) throw new TranscriptError('INVALID_URL');
 
@@ -189,6 +195,42 @@ export async function resolveTranscript(item: JobItem, language: string, signal:
     if (error instanceof TranscriptError) throw error;
     throw new TranscriptError('FETCH_FAILED');
   }
+}
+
+export async function getTranscript(videoUrl: string, options: GetTranscriptOptions = {}): Promise<Transcript> {
+  const parsed = parseYouTubeUrl(videoUrl);
+  if (!parsed.ok) throw new TranscriptError('INVALID_URL');
+
+  const controller = options.signal ? undefined : new AbortController();
+  const signal = options.signal ?? controller!.signal;
+
+  return resolveTranscript(
+    {
+      order: 1,
+      inputUrl: videoUrl,
+      videoId: parsed.videoId,
+      canonicalUrl: parsed.canonicalUrl,
+      status: 'pending',
+    },
+    options.language ?? 'auto',
+    signal,
+  );
+}
+
+export function transcriptToText(transcript: Transcript): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const formatTime = (seconds: number) => {
+    const safe = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(safe / 3600);
+    const m = Math.floor((safe % 3600) / 60);
+    const s = safe % 60;
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  };
+  return transcript.segments.map((segment) => `[${formatTime(segment.start)}] ${segment.text}`).join('\n') + '\n';
+}
+
+export async function getTranscriptText(videoUrl: string, options: GetTranscriptOptions = {}): Promise<string> {
+  return transcriptToText(await getTranscript(videoUrl, options));
 }
 
 export function toUserFacingTranscriptError(error: unknown): string {
