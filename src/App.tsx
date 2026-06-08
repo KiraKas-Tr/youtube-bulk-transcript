@@ -8,6 +8,7 @@ import { loadSettings, saveSettings } from './storage/settings';
 import './style.css';
 
 const SAMPLE_INPUT = '';
+const CAPTURED_URLS_KEY = 'capturedYoutubeUrls';
 
 function emptyCounts(): Counts {
   return { total: 0, pending: 0, processing: 0, success: 0, failed: 0, skipped: 0, cancelled: 0 };
@@ -33,6 +34,16 @@ export function App() {
       setSelectedLanguage(settings.selectedLanguage);
       setCustomLanguage(settings.customLanguage);
     });
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get({ [CAPTURED_URLS_KEY]: [] }).then((values) => {
+        const captured = Array.isArray(values[CAPTURED_URLS_KEY]) ? values[CAPTURED_URLS_KEY].filter((url): url is string => typeof url === 'string') : [];
+        if (captured.length) {
+          setUrls(captured.join('\n'));
+          setMessage(`Loaded ${captured.length} captured YouTube URL${captured.length === 1 ? '' : 's'} from the YouTube navbar button.`);
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {

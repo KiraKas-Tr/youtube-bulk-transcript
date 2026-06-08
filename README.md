@@ -22,6 +22,10 @@ npm run build
 
 Then load the generated `dist/` folder in `chrome://extensions`.
 
+## YouTube navbar button
+
+When loaded, the extension injects a **Save transcript** button into the YouTube top-right navbar on watch and Shorts pages. Clicking it stores the current video URL and opens the saver page with the captured URL prefilled.
+
 ## Development
 
 ```bash
