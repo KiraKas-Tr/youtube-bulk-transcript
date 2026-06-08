@@ -139,6 +139,10 @@
     return next.length - existing.length;
   }
 
+  function openSidePanel() {
+    chrome.runtime.sendMessage({ type: 'OPEN_TRANSCRIPT_SAVER_SIDE_PANEL' });
+  }
+
   async function captureCurrentUrl(button) {
     const currentUrl = getCurrentVideoUrl();
     if (!currentUrl) {
@@ -146,17 +150,20 @@
       return;
     }
 
+    openSidePanel();
     const addedCount = await appendCapturedUrls([currentUrl]);
     setButtonState(button, 'added', addedCount || 1);
-    chrome.runtime.sendMessage({ type: 'OPEN_TRANSCRIPT_SAVER_SIDE_PANEL' });
   }
 
   async function collectChannelUrls(button) {
+    openSidePanel();
+
     if (!isChannelVideoListingPage()) {
       const videosUrl = getChannelVideosUrl();
       if (videosUrl) {
-        sessionStorage.setItem(PENDING_CHANNEL_COLLECT_KEY, '1');
-        window.location.href = videosUrl;
+        await chrome.storage.local.set({ [PENDING_CHANNEL_COLLECT_KEY]: true });
+        setButtonState(button, 'collecting', 0);
+        window.location.assign(videosUrl);
         return;
       }
     }
@@ -187,7 +194,6 @@
     const urls = [...found];
     const addedCount = await appendCapturedUrls(urls);
     setButtonState(button, 'added', addedCount || urls.length);
-    chrome.runtime.sendMessage({ type: 'OPEN_TRANSCRIPT_SAVER_SIDE_PANEL' });
   }
 
   function createButton() {
@@ -230,10 +236,27 @@
     end.prepend(createButton());
   }
 
+  async function waitForVideoLinks() {
+    for (let i = 0; i < 12; i += 1) {
+      if (extractVideoUrlsFromPage().length > 0) return;
+      await sleep(500);
+    }
+  }
+
   async function maybeContinuePendingChannelCollect() {
-    if (sessionStorage.getItem(PENDING_CHANNEL_COLLECT_KEY) !== '1' || !isChannelVideoListingPage()) return;
-    sessionStorage.removeItem(PENDING_CHANNEL_COLLECT_KEY);
-    await sleep(1000);
+    const stored = await chrome.storage.local.get({ [PENDING_CHANNEL_COLLECT_KEY]: false });
+    if (!stored[PENDING_CHANNEL_COLLECT_KEY] || !isChannelPage()) return;
+
+    if (!isChannelVideoListingPage()) {
+      const videosUrl = getChannelVideosUrl();
+      if (videosUrl && window.location.href !== videosUrl) {
+        window.location.assign(videosUrl);
+      }
+      return;
+    }
+
+    await chrome.storage.local.set({ [PENDING_CHANNEL_COLLECT_KEY]: false });
+    await waitForVideoLinks();
     const button = document.getElementById(BUTTON_ID) || createButton();
     if (!button.isConnected) {
       const end = document.querySelector('ytd-masthead #end') || document.querySelector('#masthead #end');
