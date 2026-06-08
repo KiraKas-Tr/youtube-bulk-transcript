@@ -1,5 +1,5 @@
 export type ItemStatus = 'pending' | 'processing' | 'success' | 'failed' | 'skipped' | 'cancelled';
-export type OutputFormat = 'md' | 'txt' | 'json';
+export type OutputFormat = 'txt';
 
 export type ProcessingSettings = {
   maxVideos: number;
@@ -30,7 +30,7 @@ export type JobItem = {
   language?: string;
   status: ItemStatus;
   error?: string;
-  files?: { md?: string; txt?: string; json?: string };
+  files?: { txt?: string };
 };
 
 export type TranscriptSegment = { start: number; duration?: number; text: string };

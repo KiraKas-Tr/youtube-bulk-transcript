@@ -6,55 +6,13 @@ function transcriptLines(transcript: Transcript): string[] {
   return transcript.segments.map((segment) => `[${formatTranscriptTimestamp(segment.start)}] ${segment.text}`);
 }
 
-export function renderMarkdown(transcript: Transcript, extractedAt: string): string {
-  const lines = [
-    `# ${transcript.title}`,
-    '',
-    `URL: ${transcript.url}`,
-    `Video ID: ${transcript.videoId}`,
-    ...(transcript.channel ? [`Channel: ${transcript.channel}`] : []),
-    `Language: ${transcript.language}`,
-    `Extracted at: ${extractedAt}`,
-    'Source: public captions',
-    '',
-    '## Transcript',
-    '',
-    ...transcriptLines(transcript),
-    '',
-  ];
-  return lines.join('\n');
-}
-
 export function renderTxt(transcript: Transcript): string {
-  return [
-    transcript.title,
-    transcript.url,
-    `Language: ${transcript.language}`,
-    '',
-    ...transcriptLines(transcript),
-    '',
-  ].join('\n');
-}
-
-export function renderJson(transcript: Transcript): string {
-  return JSON.stringify(
-    {
-      video_id: transcript.videoId,
-      url: transcript.url,
-      title: transcript.title,
-      ...(transcript.channel ? { channel: transcript.channel } : {}),
-      language: transcript.language,
-      source: transcript.source,
-      segments: transcript.segments,
-    },
-    null,
-    2,
-  ) + '\n';
+  return [...transcriptLines(transcript), ''].join('\n');
 }
 
 export function renderIndexCsv(job: BulkJob): string {
   return renderCsv(
-    ['job_id', 'order', 'video_id', 'title', 'channel', 'url', 'language', 'status', 'md_file', 'txt_file', 'json_file', 'error'],
+    ['job_id', 'order', 'video_id', 'title', 'channel', 'url', 'language', 'status', 'txt_file', 'error'],
     job.items.map((item) => [
       job.id,
       item.order,
@@ -64,9 +22,7 @@ export function renderIndexCsv(job: BulkJob): string {
       item.canonicalUrl ?? item.inputUrl,
       item.language,
       item.status,
-      item.files?.md,
       item.files?.txt,
-      item.files?.json,
       item.error,
     ]),
   );

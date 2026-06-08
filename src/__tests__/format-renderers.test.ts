@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BulkJob, Transcript } from '../types';
 import { csvEscape } from '../utils/csv';
 import { formatJobTimestamp, formatTranscriptTimestamp, sanitizeFilenamePart } from '../utils/format';
-import { renderFailedCsv, renderIndexCsv, renderJson, renderMarkdown, renderMetadataJson, renderTxt } from '../output/renderers';
+import { renderFailedCsv, renderIndexCsv, renderMetadataJson, renderTxt } from '../output/renderers';
 
 const transcript: Transcript = {
   videoId: 'dQw4w9WgXcQ',
@@ -21,13 +21,13 @@ const job: BulkJob = {
   id: 'job-1',
   type: 'mixed',
   selectedLanguage: 'auto',
-  formats: ['md', 'txt', 'json'],
+  formats: ['txt'],
   createdAt: '2026-06-08T15:30:00.000Z',
   completedAt: '2026-06-08T15:31:00.000Z',
   folderName: 'bulk-transcripts-2026-06-08-1530',
   settings: { maxVideos: 50, concurrency: 2, retryCount: 1, timeoutMs: 25000 },
   items: [
-    { order: 1, inputUrl: transcript.url, videoId: transcript.videoId, canonicalUrl: transcript.url, title: transcript.title, channel: 'Channel', language: 'en', status: 'success', files: { md: 'markdown/001.md', txt: 'txt/001.txt', json: 'json/001.json' } },
+    { order: 1, inputUrl: transcript.url, videoId: transcript.videoId, canonicalUrl: transcript.url, title: transcript.title, channel: 'Channel', language: 'en', status: 'success', files: { txt: 'txt/001.txt' } },
     { order: 2, inputUrl: 'bad', status: 'skipped', error: 'URL không hợp lệ.' },
     { order: 3, inputUrl: 'https://youtu.be/oHg5SJYRHA0', videoId: 'oHg5SJYRHA0', canonicalUrl: 'https://www.youtube.com/watch?v=oHg5SJYRHA0', status: 'failed', error: 'Video không có transcript public.' },
   ],
@@ -45,11 +45,8 @@ describe('format utilities and renderers', () => {
     expect(csvEscape('a,"b"\nc')).toBe('"a,""b""\nc"');
   });
 
-  it('renders Markdown, TXT, and JSON transcript files', () => {
-    expect(renderMarkdown(transcript, '2026-06-08 15:30')).toContain('Source: public captions');
-    expect(renderMarkdown(transcript, '2026-06-08 15:30')).toContain('[01:05] More text');
-    expect(renderTxt(transcript)).toContain('Language: en');
-    expect(JSON.parse(renderJson(transcript))).toMatchObject({ video_id: 'dQw4w9WgXcQ', source: 'public_captions' });
+  it('renders transcript-only TXT files', () => {
+    expect(renderTxt(transcript)).toBe('[00:00] Intro text\n[01:05] More text\n');
   });
 
   it('renders reports with all index rows, failed-only failed.csv, and metadata counts', () => {

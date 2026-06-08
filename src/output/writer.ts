@@ -1,7 +1,7 @@
 import type { BulkJob, JobItem, JobWriter, Transcript } from '../types';
 import { USER_ERRORS } from '../types';
-import { formatDisplayDateTime, getJobFolderName, makeBaseFileName } from '../utils/format';
-import { renderFailedCsv, renderIndexCsv, renderJson, renderMarkdown, renderMetadataJson, renderTxt } from './renderers';
+import { getJobFolderName, makeBaseFileName } from '../utils/format';
+import { renderFailedCsv, renderIndexCsv, renderMetadataJson, renderTxt } from './renderers';
 
 async function writeTextFile(dir: FileSystemDirectoryHandle, name: string, contents: string): Promise<void> {
   const file = await dir.getFileHandle(name, { create: true });
@@ -70,9 +70,7 @@ export const browserJobWriter: JobWriter = {
       const folderName = await uniqueDirectoryName(parent, base);
       const jobFolder = await parent.getDirectoryHandle(folderName, { create: true });
       job.folderName = folderName;
-      await jobFolder.getDirectoryHandle('markdown', { create: true });
       await jobFolder.getDirectoryHandle('txt', { create: true });
-      await jobFolder.getDirectoryHandle('json', { create: true });
       return jobFolder;
     } catch (error) {
       throw mapWriteError(error);
@@ -81,28 +79,13 @@ export const browserJobWriter: JobWriter = {
 
   async writeTranscriptFiles(jobFolder, item, transcript, job) {
     try {
-      const markdownDir = await jobFolder.getDirectoryHandle('markdown', { create: true });
       const txtDir = await jobFolder.getDirectoryHandle('txt', { create: true });
-      const jsonDir = await jobFolder.getDirectoryHandle('json', { create: true });
       const base = makeBaseFileName({ ...item, title: transcript.title, videoId: transcript.videoId });
-      const extractedAt = formatDisplayDateTime(new Date());
       const files: JobItem['files'] = {};
 
-      if (job.formats.includes('md')) {
-        const name = await uniqueFileName(markdownDir, base, 'md');
-        await writeTextFile(markdownDir, name, renderMarkdown(transcript, extractedAt));
-        files.md = `markdown/${name}`;
-      }
-      if (job.formats.includes('txt')) {
-        const name = await uniqueFileName(txtDir, base, 'txt');
-        await writeTextFile(txtDir, name, renderTxt(transcript));
-        files.txt = `txt/${name}`;
-      }
-      if (job.formats.includes('json')) {
-        const name = await uniqueFileName(jsonDir, base, 'json');
-        await writeTextFile(jsonDir, name, renderJson(transcript));
-        files.json = `json/${name}`;
-      }
+      const name = await uniqueFileName(txtDir, base, 'txt');
+      await writeTextFile(txtDir, name, renderTxt(transcript));
+      files.txt = `txt/${name}`;
 
       return {
         ...item,

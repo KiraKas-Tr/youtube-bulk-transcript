@@ -19,7 +19,7 @@ function makeJob(): BulkJob {
     id: 'job-queue',
     type: 'mixed',
     selectedLanguage: 'auto',
-    formats: ['md', 'txt', 'json'],
+    formats: ['txt'],
     createdAt: new Date().toISOString(),
     settings: { maxVideos: 50, concurrency: 2, retryCount: 1, timeoutMs: 1000 },
     items: [
@@ -36,7 +36,7 @@ describe('runJobInFolder', () => {
     const writer: JobWriter = {
       chooseParentFolder: vi.fn(),
       createJobFolder: vi.fn(),
-      writeTranscriptFiles: vi.fn(async (_folder, item, transcript) => ({ ...item, title: transcript.title, language: transcript.language, files: { md: 'm', txt: 't', json: 'j' } })),
+      writeTranscriptFiles: vi.fn(async (_folder, item, transcript) => ({ ...item, title: transcript.title, language: transcript.language, files: { txt: 't' } })),
       writeReports: vi.fn(),
     };
 

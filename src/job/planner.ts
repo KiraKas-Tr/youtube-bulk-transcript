@@ -67,7 +67,7 @@ export function planJob(inputs: string[], selectedLanguage: string, settings: Pr
     id: formatJobId(),
     type: 'mixed',
     selectedLanguage: selectedLanguage || 'auto',
-    formats: ['md', 'txt', 'json'],
+    formats: ['txt'],
     createdAt: new Date().toISOString(),
     settings,
     items,
