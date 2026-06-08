@@ -1,8 +1,8 @@
 (() => {
   const BUTTON_ID = 'bulk-transcript-saver-navbar-button';
   const STORAGE_KEY = 'capturedYoutubeUrls';
-  const PENDING_CHANNEL_COLLECT_KEY = 'bulkTranscriptSaverPendingChannelCollect';
-  const MAX_CAPTURED_URLS = 50;
+  const MAX_CAPTURED_URLS = 10000;
+  const CHANNEL_TABS = ['videos', 'shorts', 'streams'];
 
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -47,48 +47,176 @@
     return /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)/.test(url.pathname);
   }
 
-  function isChannelVideoListingPage() {
-    return isChannelPage() && /\/(?:videos|shorts|streams)(?:\/)?$/.test(new URL(window.location.href).pathname);
+  function getChannelBasePath() {
+    const parts = new URL(window.location.href).pathname.split('/').filter(Boolean);
+    if (!parts.length) return null;
+    if (parts[0].startsWith('@')) return `/${parts[0]}`;
+    if ((parts[0] === 'channel' || parts[0] === 'c' || parts[0] === 'user') && parts[1]) return `/${parts[0]}/${parts[1]}`;
+    return null;
   }
 
-  function getChannelVideosUrl() {
-    const url = new URL(window.location.href);
-    const parts = url.pathname.split('/').filter(Boolean);
-    if (!parts.length) return null;
+  function getChannelTabUrl(tab) {
+    const basePath = getChannelBasePath();
+    if (!basePath) return null;
+    return `${window.location.origin}${basePath}/${tab}`;
+  }
 
-    let baseParts;
-    if (parts[0].startsWith('@')) {
-      baseParts = [parts[0]];
-    } else if ((parts[0] === 'channel' || parts[0] === 'c' || parts[0] === 'user') && parts[1]) {
-      baseParts = [parts[0], parts[1]];
-    } else {
-      return null;
+  function extractBalancedJson(source, startIndex) {
+    const start = source.indexOf('{', startIndex);
+    if (start < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < source.length; i += 1) {
+      const char = source[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+
+      if (char === '"') inString = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(source.slice(start, i + 1));
+          } catch {
+            return null;
+          }
+        }
+      }
     }
 
-    return `${url.origin}/${baseParts.join('/')}/videos`;
+    return null;
   }
 
-  function extractVideoUrlsFromPage() {
-    const urls = new Set();
-    document.querySelectorAll('a[href*="/watch?v="], a[href^="/shorts/"]').forEach((anchor) => {
-      const canonical = toCanonicalVideoUrl(anchor.getAttribute('href') || anchor.href);
-      if (canonical) urls.add(canonical);
+  function extractJsonAfterMarker(source, marker) {
+    const index = source.indexOf(marker);
+    if (index < 0) return null;
+    return extractBalancedJson(source, index + marker.length);
+  }
+
+  function extractInitialData(html) {
+    return extractJsonAfterMarker(html, 'var ytInitialData =')
+      || extractJsonAfterMarker(html, 'window["ytInitialData"] =')
+      || extractJsonAfterMarker(html, 'ytInitialData =');
+  }
+
+  function extractInnertubeConfig(html) {
+    const apiKey = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)?.[1];
+    const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/)?.[1] || '2.20240601.00.00';
+    const context = extractJsonAfterMarker(html, '"INNERTUBE_CONTEXT":') || {
+      client: {
+        clientName: 'WEB',
+        clientVersion,
+      },
+    };
+
+    if (!apiKey) return null;
+    return { apiKey, context };
+  }
+
+  function walk(value, visitor) {
+    if (!value || typeof value !== 'object') return;
+    visitor(value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(item, visitor));
+      return;
+    }
+    Object.keys(value).forEach((key) => walk(value[key], visitor));
+  }
+
+  function extractVideoUrlsFromData(data) {
+    const ids = new Set();
+    walk(data, (node) => {
+      const videoId = node.videoRenderer?.videoId
+        || node.gridVideoRenderer?.videoId
+        || node.reelItemRenderer?.videoId
+        || node.shortsLockupViewModel?.onTap?.innertubeCommand?.reelWatchEndpoint?.videoId
+        || node.watchEndpoint?.videoId;
+      if (videoId && /^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) ids.add(videoId);
     });
-    return [...urls];
+    return [...ids].map((id) => `https://www.youtube.com/watch?v=${id}`);
+  }
+
+  function extractContinuationTokens(data) {
+    const tokens = new Set();
+    walk(data, (node) => {
+      const token = node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token
+        || node.continuationEndpoint?.continuationCommand?.token
+        || node.nextContinuationData?.continuation
+        || node.reloadContinuationData?.continuation;
+      if (typeof token === 'string' && token.length > 20) tokens.add(token);
+    });
+    return [...tokens];
+  }
+
+  async function fetchContinuation(config, continuation) {
+    const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${encodeURIComponent(config.apiKey)}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ context: config.context, continuation }),
+    });
+    if (!response.ok) throw new Error(`Continuation request failed: ${response.status}`);
+    return response.json();
+  }
+
+  async function collectUrlsFromChannelTab(tabUrl, onProgress, collected) {
+    const response = await fetch(tabUrl, { credentials: 'include' });
+    if (!response.ok) return;
+
+    const html = await response.text();
+    const config = extractInnertubeConfig(html);
+    const initialData = extractInitialData(html);
+    if (!config || !initialData) return;
+
+    extractVideoUrlsFromData(initialData).forEach((url) => {
+      if (collected.size < MAX_CAPTURED_URLS) collected.add(url);
+    });
+    onProgress(collected.size);
+
+    const queue = extractContinuationTokens(initialData);
+    const seenTokens = new Set(queue);
+
+    while (queue.length && collected.size < MAX_CAPTURED_URLS) {
+      const token = queue.shift();
+      if (!token) continue;
+      await sleep(120);
+      const data = await fetchContinuation(config, token);
+
+      extractVideoUrlsFromData(data).forEach((url) => {
+        if (collected.size < MAX_CAPTURED_URLS) collected.add(url);
+      });
+      onProgress(collected.size);
+
+      extractContinuationTokens(data).forEach((nextToken) => {
+        if (!seenTokens.has(nextToken)) {
+          seenTokens.add(nextToken);
+          queue.push(nextToken);
+        }
+      });
+    }
   }
 
   function setButtonState(button, state, count) {
     if (state === 'added') {
       button.textContent = count ? `Added ${count} ✓` : 'Added ✓';
       button.dataset.state = 'added';
-      window.setTimeout(() => setButtonState(button, getPageMode()), 1600);
+      window.setTimeout(() => setButtonState(button, getPageMode()), 1800);
       return;
     }
     if (state === 'collecting') {
-      button.textContent = count ? `Collecting ${count}/${MAX_CAPTURED_URLS}` : 'Collecting...';
+      button.textContent = count ? `Collecting ${count}` : 'Collecting...';
       button.dataset.state = 'collecting';
       button.disabled = true;
       button.style.display = 'inline-flex';
+      button.style.alignItems = 'center';
       return;
     }
     if (state === 'channel') {
@@ -97,7 +225,7 @@
       button.disabled = false;
       button.style.display = 'inline-flex';
       button.style.alignItems = 'center';
-      button.title = `Collect channel video URLs into Bulk Transcript Saver, up to ${MAX_CAPTURED_URLS}.`;
+      button.title = 'Collect channel video URLs without scrolling using YouTube continuation requests.';
       return;
     }
     if (state === 'video') {
@@ -157,43 +285,26 @@
 
   async function collectChannelUrls(button) {
     openSidePanel();
-
-    if (!isChannelVideoListingPage()) {
-      const videosUrl = getChannelVideosUrl();
-      if (videosUrl) {
-        await chrome.storage.local.set({ [PENDING_CHANNEL_COLLECT_KEY]: true });
-        setButtonState(button, 'collecting', 0);
-        window.location.assign(videosUrl);
-        return;
-      }
-    }
-
     setButtonState(button, 'collecting', 0);
-    const found = new Set();
-    let stableRounds = 0;
-    let lastCount = 0;
 
-    for (let round = 0; round < 35 && found.size < MAX_CAPTURED_URLS; round += 1) {
-      extractVideoUrlsFromPage().forEach((url) => {
-        if (found.size < MAX_CAPTURED_URLS) found.add(url);
-      });
-
-      setButtonState(button, 'collecting', found.size);
-      if (found.size === lastCount) {
-        stableRounds += 1;
-      } else {
-        stableRounds = 0;
-        lastCount = found.size;
+    try {
+      const collected = new Set();
+      for (const tab of CHANNEL_TABS) {
+        if (collected.size >= MAX_CAPTURED_URLS) break;
+        const tabUrl = getChannelTabUrl(tab);
+        if (!tabUrl) continue;
+        await collectUrlsFromChannelTab(tabUrl, (count) => setButtonState(button, 'collecting', count), collected);
       }
-      if (stableRounds >= 5) break;
 
-      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-      await sleep(750);
+      const urls = [...collected];
+      const addedCount = await appendCapturedUrls(urls);
+      setButtonState(button, 'added', addedCount || urls.length);
+    } catch (error) {
+      console.error('[Bulk Transcript Saver] Channel collection failed', error);
+      button.textContent = 'Collect failed';
+      button.dataset.state = 'error';
+      button.disabled = false;
     }
-
-    const urls = [...found];
-    const addedCount = await appendCapturedUrls(urls);
-    setButtonState(button, 'added', addedCount || urls.length);
   }
 
   function createButton() {
@@ -236,40 +347,7 @@
     end.prepend(createButton());
   }
 
-  async function waitForVideoLinks() {
-    for (let i = 0; i < 12; i += 1) {
-      if (extractVideoUrlsFromPage().length > 0) return;
-      await sleep(500);
-    }
-  }
-
-  async function maybeContinuePendingChannelCollect() {
-    const stored = await chrome.storage.local.get({ [PENDING_CHANNEL_COLLECT_KEY]: false });
-    if (!stored[PENDING_CHANNEL_COLLECT_KEY] || !isChannelPage()) return;
-
-    if (!isChannelVideoListingPage()) {
-      const videosUrl = getChannelVideosUrl();
-      if (videosUrl && window.location.href !== videosUrl) {
-        window.location.assign(videosUrl);
-      }
-      return;
-    }
-
-    await chrome.storage.local.set({ [PENDING_CHANNEL_COLLECT_KEY]: false });
-    await waitForVideoLinks();
-    const button = document.getElementById(BUTTON_ID) || createButton();
-    if (!button.isConnected) {
-      const end = document.querySelector('ytd-masthead #end') || document.querySelector('#masthead #end');
-      end?.prepend(button);
-    }
-    await collectChannelUrls(button);
-  }
-
   ensureButton();
-  void maybeContinuePendingChannelCollect();
   window.setInterval(ensureButton, 1000);
-  window.addEventListener('yt-navigate-finish', () => {
-    ensureButton();
-    void maybeContinuePendingChannelCollect();
-  });
+  window.addEventListener('yt-navigate-finish', ensureButton);
 })();

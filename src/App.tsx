@@ -184,7 +184,7 @@ export function App() {
         <div>
           <p className="eyebrow">Chrome MV3 · local-first</p>
           <h1>Bulk YouTube Transcript Saver</h1>
-          <p>Paste up to 50 YouTube video URLs, fetch public captions, and save Markdown, TXT, JSON, and reports to a local folder.</p>
+          <p>Paste YouTube video URLs or collect a channel, fetch public captions, and save Markdown, TXT, JSON, and reports to a local folder.</p>
         </div>
       </header>
 

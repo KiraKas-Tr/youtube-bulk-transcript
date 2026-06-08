@@ -2,7 +2,7 @@ export type ItemStatus = 'pending' | 'processing' | 'success' | 'failed' | 'skip
 export type OutputFormat = 'md' | 'txt' | 'json';
 
 export type ProcessingSettings = {
-  maxVideos: 50;
+  maxVideos: number;
   concurrency: 2 | 3;
   retryCount: 1;
   timeoutMs: number;
@@ -55,7 +55,7 @@ export const USER_ERRORS = {
   FETCH_FAILED: 'Không tải được transcript. Hãy thử lại sau.',
   WRITE_FAILED: 'Không ghi được file vào folder đã chọn.',
   PERMISSION_DENIED: 'User chưa cấp quyền ghi vào folder.',
-  MAX_VIDEOS: 'Giới hạn tối đa 50 video mỗi job.',
+  MAX_VIDEOS: 'Đã vượt quá giới hạn video của job.',
   DUPLICATE: 'Duplicate video ID; skipped.',
   CANCELLED: 'Cancelled by user.',
 } as const;

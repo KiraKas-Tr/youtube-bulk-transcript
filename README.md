@@ -1,6 +1,6 @@
 # Bulk YouTube Transcript Saver
 
-Local-first Chrome MV3 extension for saving public YouTube captions from up to 50 video URLs as Markdown, TXT, JSON, plus `index.csv`, `failed.csv`, and `metadata.json` reports.
+Local-first Chrome MV3 extension for saving public YouTube captions from YouTube video URLs or channels as Markdown, TXT, JSON, plus `index.csv`, `failed.csv`, and `metadata.json` reports.
 
 ## Install / load locally
 
@@ -26,7 +26,7 @@ Then load the generated `dist/` folder in `chrome://extensions`.
 
 When loaded, the extension injects an **Add to saver** button into the YouTube top-right navbar on watch and Shorts pages. Clicking it stores the current video URL and opens the saver in Chrome's side panel with the captured URL prefilled.
 
-On channel pages, the same navbar area shows **Collect channel**. It opens the channel's Videos tab when needed, scrolls to collect video URLs, and adds them to the side panel up to the MVP job cap of 50 videos.
+On channel pages, the same navbar area shows **Collect channel**. It collects channel video URLs without scrolling by using YouTube's internal continuation responses, then adds them to the side panel. This no-key method is unofficial and may break if YouTube changes its page data.
 
 ## Development
 

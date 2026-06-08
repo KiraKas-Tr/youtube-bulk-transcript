@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bulk YouTube Transcript Saver",
-  "description": "Save public YouTube captions from up to 50 video URLs as Markdown, TXT, JSON, and reports.",
+  "description": "Save public YouTube captions from videos and channels as Markdown, TXT, JSON, and reports.",
   "version": "0.1.0",
   "permissions": ["storage", "sidePanel"],
   "host_permissions": [

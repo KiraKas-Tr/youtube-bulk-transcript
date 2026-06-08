@@ -4,7 +4,7 @@ import { formatJobId } from '../utils/format';
 import { parseYouTubeUrl } from '../utils/url';
 
 export const DEFAULT_SETTINGS: ProcessingSettings = {
-  maxVideos: 50,
+  maxVideos: 10_000,
   concurrency: 2,
   retryCount: 1,
   timeoutMs: 25_000,
