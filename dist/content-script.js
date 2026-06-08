@@ -24,18 +24,21 @@
     if (state === 'added') {
       button.textContent = 'Added ✓';
       button.dataset.state = 'added';
-      window.setTimeout(() => setButtonState(button, 'ready'), 1400);
+      window.setTimeout(() => setButtonState(button, getCurrentVideoUrl() ? 'ready' : 'unavailable'), 1400);
       return;
     }
     if (state === 'unavailable') {
-      button.textContent = 'No video';
+      button.textContent = '';
       button.dataset.state = 'unavailable';
       button.disabled = true;
+      button.style.display = 'none';
       return;
     }
     button.textContent = 'Add to saver';
     button.dataset.state = 'ready';
     button.disabled = false;
+    button.style.display = 'inline-flex';
+    button.style.alignItems = 'center';
   }
 
   async function captureCurrentUrl(button) {

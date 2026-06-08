@@ -19,6 +19,26 @@ function effectiveLanguage(selectedLanguage: string, customLanguage: string): st
   return selectedLanguage;
 }
 
+function normalizeUrlLines(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function mergeCapturedUrls(existingText: string, capturedUrls: string[]): string {
+  const existing = normalizeUrlLines(existingText);
+  const seen = new Set(existing);
+  const merged = [...existing];
+
+  for (const url of capturedUrls) {
+    const trimmed = url.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      merged.push(trimmed);
+    }
+  }
+
+  return merged.join('\n');
+}
+
 export function App() {
   const [urls, setUrls] = useState(SAMPLE_INPUT);
   const [selectedLanguage, setSelectedLanguage] = useState('auto');
@@ -36,13 +56,27 @@ export function App() {
     });
 
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      const applyCapturedUrls = (rawValue: unknown) => {
+        const captured = Array.isArray(rawValue) ? rawValue.filter((url): url is string => typeof url === 'string') : [];
+        if (!captured.length) return;
+
+        setUrls((current) => mergeCapturedUrls(current, captured));
+        setJob(null);
+        setMessage(`Added ${captured.length} captured YouTube URL${captured.length === 1 ? '' : 's'} to the list.`);
+      };
+
       chrome.storage.local.get({ [CAPTURED_URLS_KEY]: [] }).then((values) => {
-        const captured = Array.isArray(values[CAPTURED_URLS_KEY]) ? values[CAPTURED_URLS_KEY].filter((url): url is string => typeof url === 'string') : [];
-        if (captured.length) {
-          setUrls(captured.join('\n'));
-          setMessage(`Loaded ${captured.length} captured YouTube URL${captured.length === 1 ? '' : 's'} from the YouTube navbar button.`);
-        }
+        applyCapturedUrls(values[CAPTURED_URLS_KEY]);
       });
+
+      const onStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+        if (areaName === 'local' && changes[CAPTURED_URLS_KEY]) {
+          applyCapturedUrls(changes[CAPTURED_URLS_KEY].newValue);
+        }
+      };
+
+      chrome.storage.onChanged.addListener(onStorageChanged);
+      return () => chrome.storage.onChanged.removeListener(onStorageChanged);
     }
   }, []);
 
