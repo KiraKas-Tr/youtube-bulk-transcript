@@ -20,6 +20,14 @@ function watchHtml() {
   return `<html><script>var ytInitialPlayerResponse = ${JSON.stringify(player)};</script></html>`;
 }
 
+function watchHtmlWithoutCaptions() {
+  const player = {
+    playabilityStatus: { status: 'OK' },
+    videoDetails: { title: 'Fallback Video', author: 'Fallback Channel', videoId: 'dQw4w9WgXcQ' },
+  };
+  return `<html><script>var ytInitialPlayerResponse = ${JSON.stringify(player)};</script></html>`;
+}
+
 describe('getTranscript', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -67,6 +75,24 @@ describe('getTranscript', () => {
     }));
 
     await expect(getTranscriptText('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).resolves.toBe('[00:01] Line one\n');
+  });
+
+  it('falls back to timedtext track list when player captions are missing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const textUrl = String(url);
+      if (textUrl.includes('/watch?')) return new Response(watchHtmlWithoutCaptions(), { status: 200 });
+      if (textUrl.includes('type=list')) {
+        return new Response('<transcript_list><track lang_code="en" lang_original="English" lang_translated="English" /></transcript_list>', { status: 200 });
+      }
+      if (textUrl.includes('/api/timedtext')) {
+        return new Response('<transcript><text start="2" dur="3">Fallback text</text></transcript>', { status: 200 });
+      }
+      return new Response('', { status: 404 });
+    }));
+
+    const transcript = await getTranscript('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect(transcript.title).toBe('Fallback Video');
+    expect(transcript.segments).toEqual([{ start: 2, duration: 3, text: 'Fallback text' }]);
   });
 
   it('rejects invalid URLs', async () => {

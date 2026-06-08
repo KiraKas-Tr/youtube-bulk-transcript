@@ -109,6 +109,12 @@ function appendQuery(url: string, key: string, value: string): string {
   return parsed.toString();
 }
 
+function removeQuery(url: string, key: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.delete(key);
+  return parsed.toString();
+}
+
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
@@ -137,20 +143,42 @@ function parseJson3(text: string): TranscriptSegment[] | null {
 
 function parseCaptionXml(text: string): TranscriptSegment[] {
   const doc = new DOMParser().parseFromString(text, 'text/xml');
-  const nodes = Array.from(doc.querySelectorAll('text'));
+  const nodes = Array.from(doc.querySelectorAll('text, p'));
   return nodes
     .map((node) => {
       const segmentText = normalizeWhitespace(node.textContent ?? '');
-      const start = Number(node.getAttribute('start'));
-      const dur = node.getAttribute('dur');
+      const start = Number(node.getAttribute('start') ?? node.getAttribute('t'));
+      const durAttr = node.getAttribute('dur') ?? node.getAttribute('d');
+      const rawDuration = durAttr == null ? undefined : Number(durAttr);
+      const usesMilliseconds = node.hasAttribute('t') || node.hasAttribute('d');
       if (!Number.isFinite(start) || !segmentText) return null;
       return {
-        start,
-        ...(dur != null && Number.isFinite(Number(dur)) ? { duration: Number(dur) } : {}),
+        start: usesMilliseconds ? start / 1000 : start,
+        ...(rawDuration != null && Number.isFinite(rawDuration) ? { duration: usesMilliseconds ? rawDuration / 1000 : rawDuration } : {}),
         text: segmentText,
       };
     })
     .filter((segment): segment is TranscriptSegment => Boolean(segment));
+}
+
+function parseTimedTextTrackList(xml: string, videoId: string): CaptionTrack[] {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  return Array.from(doc.querySelectorAll('track')).map((track) => {
+    const lang = track.getAttribute('lang_code') || track.getAttribute('lang_original') || '';
+    const name = track.getAttribute('name') || '';
+    const kind = track.getAttribute('kind') || undefined;
+    const url = new URL('https://www.youtube.com/api/timedtext');
+    url.searchParams.set('v', videoId);
+    url.searchParams.set('lang', lang);
+    if (name) url.searchParams.set('name', name);
+    if (kind) url.searchParams.set('kind', kind);
+    return {
+      baseUrl: url.toString(),
+      languageCode: lang,
+      kind,
+      name: { simpleText: track.getAttribute('lang_translated') || track.getAttribute('lang_original') || lang },
+    };
+  }).filter((track) => Boolean(track.languageCode));
 }
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
@@ -228,6 +256,39 @@ async function resolvePlayer(videoId: string, url: string, signal: AbortSignal):
   throw new TranscriptError('UNAVAILABLE');
 }
 
+async function resolveTimedTextTracks(videoId: string, signal: AbortSignal): Promise<CaptionTrack[]> {
+  const listUrl = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}&hl=en`;
+  try {
+    const xml = await fetchText(listUrl, signal);
+    return parseTimedTextTrackList(xml, videoId);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCaptionSegments(track: CaptionTrack, signal: AbortSignal): Promise<TranscriptSegment[]> {
+  const candidates = [
+    appendQuery(track.baseUrl, 'fmt', 'json3'),
+    appendQuery(track.baseUrl, 'fmt', 'srv3'),
+    removeQuery(track.baseUrl, 'fmt'),
+  ];
+  const seen = new Set<string>();
+
+  for (const url of candidates) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    try {
+      const captionText = await fetchText(url, signal);
+      const segments = parseJson3(captionText) ?? parseCaptionXml(captionText);
+      if (segments.length) return segments;
+    } catch {
+      // Try the next caption format.
+    }
+  }
+
+  return [];
+}
+
 export type GetTranscriptOptions = {
   language?: string;
   signal?: AbortSignal;
@@ -243,12 +304,13 @@ export async function resolveTranscript(item: JobItem, language: string, signal:
     const status = player.playabilityStatus?.status;
     if (status && status !== 'OK') throw new TranscriptError('UNAVAILABLE');
 
-    const tracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+    const playerTracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+    const timedTextTracks = playerTracks.length ? [] : await resolveTimedTextTracks(item.videoId, signal);
+    const tracks = playerTracks.length ? playerTracks : timedTextTracks;
     if (!tracks.length) throw new TranscriptError('NO_TRANSCRIPT');
 
     const selectedTrack = selectCaptionTrack(tracks, language);
-    const captionText = await fetchText(appendQuery(selectedTrack.baseUrl, 'fmt', 'json3'), signal);
-    const segments = parseJson3(captionText) ?? parseCaptionXml(captionText);
+    const segments = await fetchCaptionSegments(selectedTrack, signal);
     if (!segments.length) throw new TranscriptError('NO_TRANSCRIPT');
 
     const title = player.videoDetails?.title?.trim() || item.title || `untitled-video-${item.videoId}`;

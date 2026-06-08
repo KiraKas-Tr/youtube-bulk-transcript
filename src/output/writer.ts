@@ -70,7 +70,6 @@ export const browserJobWriter: JobWriter = {
       const folderName = await uniqueDirectoryName(parent, base);
       const jobFolder = await parent.getDirectoryHandle(folderName, { create: true });
       job.folderName = folderName;
-      await jobFolder.getDirectoryHandle('txt', { create: true });
       return jobFolder;
     } catch (error) {
       throw mapWriteError(error);
@@ -79,13 +78,12 @@ export const browserJobWriter: JobWriter = {
 
   async writeTranscriptFiles(jobFolder, item, transcript, job) {
     try {
-      const txtDir = await jobFolder.getDirectoryHandle('txt', { create: true });
       const base = makeBaseFileName({ ...item, title: transcript.title, videoId: transcript.videoId });
       const files: JobItem['files'] = {};
 
-      const name = await uniqueFileName(txtDir, base, 'txt');
-      await writeTextFile(txtDir, name, renderTxt(transcript));
-      files.txt = `txt/${name}`;
+      const name = await uniqueFileName(jobFolder, base, 'txt');
+      await writeTextFile(jobFolder, name, renderTxt(transcript));
+      files.txt = name;
 
       return {
         ...item,
