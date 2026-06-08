@@ -33,7 +33,7 @@
       button.disabled = true;
       return;
     }
-    button.textContent = 'Save transcript';
+    button.textContent = 'Add to saver';
     button.dataset.state = 'ready';
     button.disabled = false;
   }
@@ -50,14 +50,14 @@
     const next = existing.includes(currentUrl) ? existing : [...existing, currentUrl];
     await chrome.storage.local.set({ [STORAGE_KEY]: next });
     setButtonState(button, 'added');
-    chrome.runtime.sendMessage({ type: 'OPEN_TRANSCRIPT_SAVER' });
+    chrome.runtime.sendMessage({ type: 'OPEN_TRANSCRIPT_SAVER_SIDE_PANEL' });
   }
 
   function createButton() {
     const button = document.createElement('button');
     button.id = BUTTON_ID;
     button.type = 'button';
-    button.title = 'Add this YouTube video URL to Bulk Transcript Saver';
+    button.title = 'Add this video URL and open Bulk Transcript Saver side panel';
     button.style.cssText = [
       'margin-right: 8px',
       'height: 32px',

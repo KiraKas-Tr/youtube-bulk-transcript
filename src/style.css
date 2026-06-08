@@ -6,7 +6,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 760px; }
+body { margin: 0; }
 button, input, select, textarea { font: inherit; }
 button { border: 1px solid #d1d5db; background: #fff; color: #111827; border-radius: 8px; padding: 0.6rem 0.9rem; cursor: pointer; }
 button:hover:not(:disabled) { border-color: #2563eb; }
@@ -32,7 +32,7 @@ input, select { border: 1px solid #d1d5db; border-radius: 8px; padding: 0.55rem 
 .summary { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 14px; }
 .summary span { color: #4b5563; }
 .table-wrap { overflow: auto; border: 1px solid #e5e7eb; border-radius: 12px; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px; }
 th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; vertical-align: top; }
 th { background: #f9fafb; font-size: 12px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.04em; }
 tr:last-child td { border-bottom: 0; }
@@ -43,3 +43,12 @@ tr:last-child td { border-bottom: 0; }
 .status-processing { background: #dbeafe; color: #1d4ed8; }
 .status-skipped { background: #fef3c7; color: #92400e; }
 .status-cancelled { background: #e5e7eb; color: #374151; }
+
+@media (max-width: 640px) {
+  .app-shell { padding: 12px; }
+  .hero h1 { font-size: 22px; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .actions { align-items: stretch; }
+  .actions button { flex: 1 1 auto; }
+  .folder-name { width: 100%; margin-right: 0; }
+}

@@ -3,7 +3,7 @@
   "name": "Bulk YouTube Transcript Saver",
   "description": "Save public YouTube captions from up to 50 video URLs as Markdown, TXT, JSON, and reports.",
   "version": "0.1.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "sidePanel"],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://youtube.com/*",
@@ -14,6 +14,9 @@
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "index.html"
   },
   "content_scripts": [
     {

@@ -24,7 +24,7 @@ Then load the generated `dist/` folder in `chrome://extensions`.
 
 ## YouTube navbar button
 
-When loaded, the extension injects a **Save transcript** button into the YouTube top-right navbar on watch and Shorts pages. Clicking it stores the current video URL and opens the saver page with the captured URL prefilled.
+When loaded, the extension injects an **Add to saver** button into the YouTube top-right navbar on watch and Shorts pages. Clicking it stores the current video URL and opens the saver in Chrome's side panel with the captured URL prefilled.
 
 ## Development
 
